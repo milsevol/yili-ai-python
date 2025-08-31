@@ -86,32 +86,76 @@ async def generate_conversation_summary_from_text(conversation_text, langchain_c
 # 提取会话实体
 async def extract_conversation_entities(langchain_client, conversation):
     """
-    从会话中提取实体和情感分析
+    从会话中提取实体和情感分析，增强多维度匹配逻辑
     """
     chat_model = langchain_client["chat_model"]
     
     try:
-        # 直接使用消息内容调用模型
+        # 构建更精确的提示词，增强实体提取的多维度匹配
         prompt_content = f"""
-        请从以下会话内容中提取关键实体信息和进行情感分析，包括：
-        1. 提及的产品
-        2. 提及的行业
-        3. 提及的话题
-        4. 提及的问题或抱怨
-        5. 整体情感倾向（positive、neutral、negative）
-        
+        请从以下会话内容中提取关键实体信息，特别关注客户特征和投资意向，用于多维度匹配：
+
         会话内容：
         {conversation['full_content']}
-        
+
+        请提取以下类型的实体：
+        1. 客户特征：
+           - 身份特征：企业主、公司老板、创业者、高管、个体户等
+           - 财务状况：高净值、资金充裕、有资产、收入稳定等
+           - 行业背景：所属行业、公司规模、业务类型等
+           - 个人属性：年龄段、职业、教育背景等
+
+        2. 投资意向：
+           - 投资类型：美股、A股、港股、基金、理财产品、保险等
+           - 投资金额：具体金额或资金规模描述
+           - 风险偏好：保守、稳健、激进、平衡等
+           - 投资期限：短期、中期、长期等
+
+        3. 产品服务：
+           - 咨询的产品类型
+           - 服务需求类型
+           - 具体问题和关注点
+
+        4. 情感和态度：
+           - 整体情感倾向
+           - 满意度
+           - 信任度
+
+        5. 搜索标签：
+           - 提取能够用于搜索匹配的关键词标签
+
         请以JSON格式返回结果，格式如下：
-        {{"mentioned_products": ["产品1", "产品2"], 
-          "mentioned_industries": ["行业1", "行业2"], 
-          "mentioned_topics": ["话题1", "话题2"], 
-          "mentioned_complaints": ["问题1", "问题2"],
-          "sentiment": "positive/neutral/negative"
+        {{
+            "customer_profile": {{
+                "identity": ["企业主", "公司老板"],
+                "financial_status": ["高净值", "资金充裕"],
+                "industry": "行业",
+                "personal_attributes": ["年龄段", "职业"]
+            }},
+            "investment_intent": {{
+                "investment_types": ["美股", "股票投资"],
+                "amount_range": "投资金额",
+                "risk_preference": "风险偏好",
+                "time_horizon": "投资期限"
+            }},
+            "product_service": {{
+                "product_types": ["产品类型"],
+                "service_needs": ["服务需求"],
+                "specific_questions": ["具体问题"]
+            }},
+            "sentiment_analysis": {{
+                "overall_sentiment": "positive/neutral/negative",
+                "satisfaction_level": "满意度",
+                "trust_level": "信任度"
+            }},
+            "search_tags": ["关键标签1", "关键标签2"],
+            "mentioned_products": ["产品1", "产品2"],
+            "mentioned_industries": ["行业1", "行业2"],
+            "mentioned_topics": ["话题1", "话题2"],
+            "mentioned_complaints": ["问题1", "问题2"]
         }}
         
-        只返回JSON格式的结果，不要包含任何解释。
+        如果某些信息不存在，请设置为null或空数组。只返回JSON格式的结果，不要包含任何解释。
         """
         
         # 直接使用消息列表调用模型
@@ -125,13 +169,48 @@ async def extract_conversation_entities(langchain_client, conversation):
         
         try:
             result_dict = json.loads(result_str)
-            # 确保sentiment字段存在
+            
+            # 确保必要字段存在，保持向后兼容
+            if "mentioned_products" not in result_dict:
+                result_dict["mentioned_products"] = []
+            if "mentioned_industries" not in result_dict:
+                result_dict["mentioned_industries"] = []
+            if "mentioned_topics" not in result_dict:
+                result_dict["mentioned_topics"] = []
+            if "mentioned_complaints" not in result_dict:
+                result_dict["mentioned_complaints"] = []
             if "sentiment" not in result_dict:
-                result_dict["sentiment"] = "neutral"
+                # 从新的结构中提取情感信息
+                sentiment_analysis = result_dict.get("sentiment_analysis", {})
+                result_dict["sentiment"] = sentiment_analysis.get("overall_sentiment", "neutral")
+            
             return result_dict
         except json.JSONDecodeError:
             print("解析实体提取结果失败")
             return {
+                "customer_profile": {
+                    "identity": [],
+                    "financial_status": [],
+                    "industry": None,
+                    "personal_attributes": []
+                },
+                "investment_intent": {
+                    "investment_types": [],
+                    "amount_range": None,
+                    "risk_preference": None,
+                    "time_horizon": None
+                },
+                "product_service": {
+                    "product_types": [],
+                    "service_needs": [],
+                    "specific_questions": []
+                },
+                "sentiment_analysis": {
+                    "overall_sentiment": "neutral",
+                    "satisfaction_level": None,
+                    "trust_level": None
+                },
+                "search_tags": [],
                 "mentioned_products": [],
                 "mentioned_industries": [],
                 "mentioned_topics": [],
@@ -141,6 +220,29 @@ async def extract_conversation_entities(langchain_client, conversation):
     except Exception as e:
         print(f"提取会话实体失败: {str(e)}")
         return {
+            "customer_profile": {
+                "identity": [],
+                "financial_status": [],
+                "industry": None,
+                "personal_attributes": []
+            },
+            "investment_intent": {
+                "investment_types": [],
+                "amount_range": None,
+                "risk_preference": None,
+                "time_horizon": None
+            },
+            "product_service": {
+                "product_types": [],
+                "service_needs": [],
+                "specific_questions": []
+            },
+            "sentiment_analysis": {
+                "overall_sentiment": "neutral",
+                "satisfaction_level": None,
+                "trust_level": None
+            },
+            "search_tags": [],
             "mentioned_products": [],
             "mentioned_industries": [],
             "mentioned_topics": [],
@@ -501,22 +603,30 @@ async def llm_preprocess_query(chat_model, query_text):
     使用大模型智能预处理查询文本
     """
     try:
-        # 构建提示词
+        # 构建更精确的提示词
         prompt_content = f"""你是一个专业的金融客服搜索助手。请分析用户的查询意图，并优化查询文本以提高搜索准确性。
 
 用户查询：{query_text}
 
 请执行以下任务：
-1. 理解查询意图和关键信息
-2. 提取核心关键词
+1. 识别查询中的关键实体（客户特征、产品类型、行业、需求等）
+2. 提取核心关键词和短语
 3. 添加相关的同义词和扩展词汇
-4. 优化查询表达，使其更适合语义搜索
+4. 补充隐含的搜索意图
 
 优化规则：
-- 保持原始查询的核心意图
+- 保持原始查询的核心意图不变
+- 针对"想投资美股的有自己公司的客户"这类查询，要识别：
+  * 投资意向：美股、股票投资、海外投资
+  * 客户特征：企业主、公司老板、创业者、高净值客户
+  * 财务状况：有资产、有收入来源、资金充裕
 - 添加金融、投资、理财相关的同义词
-- 扩展客户特征描述词汇
+- 扩展客户画像描述词汇
 - 使用更丰富的语义表达
+
+示例：
+输入："想投资美股的有自己公司的客户"
+输出："想投资美股 股票投资 海外投资 有自己公司 企业主 公司老板 创业者 高净值客户 资金充裕 投资需求 资产配置"
 
 请直接返回优化后的查询文本，不要包含解释："""
         
@@ -548,26 +658,56 @@ def preprocess_query_text(query_text):
     # 去除多余空格
     processed = query_text.strip()
     
-    # 添加同义词扩展（可以根据业务需求扩展）
+    # 扩展的同义词映射表
     synonyms_map = {
-        "公司": "企业 公司 机构",
-        "客户": "客户 用户 顾客",
-        "产品": "产品 服务 业务",
-        "投资": "投资 理财 资产配置",
-        "风险": "风险 安全 保障",
-        "收益": "收益 回报 利润",
-        "咨询": "咨询 询问 了解"
+        # 客户特征相关
+        "公司": "企业 公司 机构 公司老板 企业主 创业者",
+        "老板": "老板 企业主 公司老板 创业者 企业家 负责人",
+        "企业主": "企业主 公司老板 老板 创业者 企业家",
+        "创业者": "创业者 企业主 公司老板 老板 企业家",
+        
+        # 客户类型
+        "客户": "客户 用户 顾客 投资者 理财客户",
+        "高净值": "高净值 富裕 资金充裕 有钱 财富 资产丰厚",
+        "有钱": "有钱 富裕 高净值 资金充裕 财富 资产丰厚",
+        
+        # 投资相关
+        "投资": "投资 理财 资产配置 财富管理 投资理财",
+        "美股": "美股 美国股票 海外投资 境外投资 国际投资",
+        "股票": "股票 股市 证券 权益投资 股权投资",
+        "理财": "理财 投资 资产配置 财富管理 投资理财",
+        
+        # 产品服务
+        "产品": "产品 服务 业务 理财产品 投资产品",
+        "基金": "基金 投资基金 理财产品 资产管理",
+        "保险": "保险 保障 风险管理 保险产品",
+        
+        # 需求意向
+        "想要": "想要 希望 需要 打算 考虑 有意向",
+        "需要": "需要 想要 希望 打算 考虑 有意向",
+        "咨询": "咨询 询问 了解 问询 求助",
+        
+        # 财务状况
+        "风险": "风险 安全 保障 风险管理 风险控制",
+        "收益": "收益 回报 利润 盈利 收入",
+        "资金": "资金 资本 资产 财富 资金实力"
     }
     
-    # 简单的同义词扩展
+    # 智能同义词扩展
+    expanded_terms = []
     for key, synonyms in synonyms_map.items():
         if key in processed:
-            processed = f"{processed} {synonyms}"
+            expanded_terms.extend(synonyms.split())
+    
+    # 去重并添加到查询中
+    if expanded_terms:
+        unique_terms = list(set(expanded_terms))
+        processed = f"{processed} {' '.join(unique_terms)}"
     
     return processed
 
 
-async def vector_search_conversations(es_client, query_vector, filters=None, k=50, similarity_threshold=0.7):
+async def vector_search_conversations(es_client, query_vector, filters=None, k=50, similarity_threshold=0.5):
     """
     使用向量进行会话搜索
     """
@@ -584,8 +724,9 @@ async def vector_search_conversations(es_client, query_vector, filters=None, k=5
                 "knn": {
                     "field": "content_vector",
                     "query_vector": query_vector,
-                    "k": k,
-                    "num_candidates": k * 2
+                    "k": min(k * 5, 200),  # 增加候选结果数量
+                    "num_candidates": min(k * 20, 2000),  # 大幅增加候选数量以提高召回率
+                    "boost": 1.2  # 增加向量搜索的权重
                 }
             }
             
@@ -642,8 +783,11 @@ async def vector_search_conversations(es_client, query_vector, filters=None, k=5
             # 对于script_score查询，分数需要减1（因为我们加了1.0）
             actual_score = hit["_score"] - 1.0 if used_script_score else hit["_score"]
             
-            # 应用相似度阈值过滤
-            if actual_score >= similarity_threshold:
+            # 应用动态相似度阈值过滤
+            # 对于高质量查询，使用较低的阈值以提高召回率
+            dynamic_threshold = max(similarity_threshold * 0.8, 0.3)  # 动态降低阈值
+            
+            if actual_score >= dynamic_threshold:
                 # 更新实际分数
                 hit["_score"] = actual_score
                 filtered_hits.append(hit)
