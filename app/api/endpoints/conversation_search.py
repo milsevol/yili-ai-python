@@ -373,6 +373,19 @@ async def vector_search_customers(
             else:
                 combined_filter = {"bool": {"must": filters}}
         
+        # 打印ES查询参数，方便在ES-head中调试
+        print("=== ES查询参数 ===")
+        import json
+        query_params = {
+            "query_vector": query_vector[:5] if query_vector else None,  # 只显示前5个向量值
+            "filters": combined_filter,
+            "k": query.k,
+            "similarity_threshold": query.similarity_threshold,
+            "index": "conversation_contents"
+        }
+        print(json.dumps(query_params, indent=2, ensure_ascii=False))
+        print("==================")
+        
         # 执行向量搜索
         search_results = await vector_search_conversations(
             es_client=es_client,

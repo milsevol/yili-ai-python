@@ -733,6 +733,24 @@ async def vector_search_conversations(es_client, query_vector, filters=None, k=5
             if filters:
                 knn_query["knn"]["filter"] = filters
             
+            # 将kNN查询结构输出到文件，方便在ES-head中执行
+            import json
+            import os
+            from datetime import datetime
+            
+            output_dir = "/Users/cuixueyong/code/github/yili-ai-python/doc/会话搜索和洞察"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = os.path.join(output_dir, f"knn_query_{timestamp}.json")
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write("=== kNN查询结构 ===\n")
+                f.write(json.dumps(knn_query, indent=2, ensure_ascii=False))
+                f.write("\n==================\n")
+            
+            print(f"kNN查询结构已保存到: {output_file}")
+            
             response = es_client.search(
                 index="conversation_contents",
                 body=knn_query,
@@ -743,7 +761,6 @@ async def vector_search_conversations(es_client, query_vector, filters=None, k=5
             
             # 标记使用了script_score查询
             used_script_score = True
-            
             # 回退到script_score查询（兼容旧版本ES）
             script_query = {
                 "query": {
@@ -769,6 +786,24 @@ async def vector_search_conversations(es_client, query_vector, filters=None, k=5
                     script_query["query"]["script_score"]["query"]["bool"]["must"].extend(filters["bool"]["must"])
                 else:
                     script_query["query"]["script_score"]["query"]["bool"]["must"].append(filters)
+            
+            # 将script_score查询结构输出到文件，方便在ES-head中执行
+            import json
+            import os
+            from datetime import datetime
+            
+            output_dir = "/Users/cuixueyong/code/github/yili-ai-python/doc/会话搜索和洞察"
+            os.makedirs(output_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = os.path.join(output_dir, f"script_score_query_{timestamp}.json")
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write("=== script_score查询结构 ===\n")
+                f.write(json.dumps(script_query, indent=2, ensure_ascii=False))
+                f.write("\n=========================\n")
+            
+            print(f"script_score查询结构已保存到: {output_file}")
             
             response = es_client.search(
                 index="conversation_contents",

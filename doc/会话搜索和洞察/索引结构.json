@@ -1,0 +1,131 @@
+{
+    "conversation_contents": {
+        "mappings": {
+            "properties": {
+                "advisor_id": {
+                    "type": "keyword"
+                },
+                "advisor_name": {
+                    "type": "keyword"
+                },
+                "content_vector": {
+                    "type": "dense_vector",
+                    "dims": 1024
+                },
+                "conversation_id": {
+                    "type": "keyword"
+                },
+                "conversation_tags": {
+                    "type": "keyword"
+                },
+                "conversation_time": {
+                    "type": "date"
+                },
+                "customer_id": {
+                    "type": "keyword"
+                },
+                "customer_name": {
+                    "type": "keyword"
+                },
+                "extracted_entities": {
+                    "type": "nested",
+                    "properties": {
+                        "confidence": {
+                            "type": "float"
+                        },
+                        "entity_type": {
+                            "type": "keyword"
+                        },
+                        "entity_value": {
+                            "type": "keyword"
+                        },
+                        "positions": {
+                            "type": "nested",
+                            "properties": {
+                                "end_pos": {
+                                    "type": "integer"
+                                },
+                                "message_index": {
+                                    "type": "integer"
+                                },
+                                "start_pos": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "full_content": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256
+                        }
+                    },
+                    "analyzer": "standard"
+                },
+                "mentioned_complaints": {
+                    "type": "keyword"
+                },
+                "mentioned_industries": {
+                    "type": "keyword"
+                },
+                "mentioned_products": {
+                    "type": "keyword"
+                },
+                "mentioned_topics": {
+                    "type": "keyword"
+                },
+                "messages": {
+                    "type": "nested",
+                    "properties": {
+                        "content": {
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword",
+                                    "ignore_above": 256
+                                }
+                            },
+                            "analyzer": "standard"
+                        },
+                        "message_type": {
+                            "type": "keyword"
+                        },
+                        "send_time": {
+                            "type": "date"
+                        },
+                        "sender_id": {
+                            "type": "keyword"
+                        },
+                        "sender_name": {
+                            "type": "keyword"
+                        },
+                        "sender_type": {
+                            "type": "keyword"
+                        }
+                    }
+                },
+                "sentiment": {
+                    "type": "nested",
+                    "properties": {
+                        "message_index": {
+                            "type": "integer"
+                        },
+                        "sentiment_score": {
+                            "type": "float"
+                        },
+                        "sentiment_type": {
+                            "type": "keyword"
+                        }
+                    }
+                },
+                "summary": {
+                    "type": "text",
+                    "analyzer": "standard"
+                }
+            }
+        }
+    }
+}
