@@ -408,3 +408,267 @@ async def llm_tool_use(question: str):
             "response": response.content,
             "tool_calls": []
         }
+
+
+@router.get("/llm/multi_tool_demo")
+async def llm_multi_tool_demo(question: str):
+    """
+    多工具调用演示：展示复杂的多工具协作场景
+    
+    这个示例专门设计来演示多工具调用的情况，包含：
+    - 时间查询工具
+    - 数学计算工具  
+    - 天气查询工具（模拟）
+    - 文本处理工具
+    - 随机数生成工具
+    
+    示例问题：
+    - "现在几点了？帮我计算一下距离2024年还有多少天，然后生成一个1-100的随机数"
+    - "获取当前时间，计算2+3*4的结果，然后把结果转换为大写文本"
+    - "查询今天天气，计算温度华氏度转摄氏度，生成随机推荐"
+    """
+    from langchain_core.tools import tool
+    import random
+    import json
+    
+    # 获取LangChain客户端
+    client = get_langchain_client()
+    chat_model = client["chat_model"]
+    
+    # 定义多个工具函数
+    @tool
+    def get_current_time() -> str:
+        """获取当前的详细时间信息，包括日期、时间、星期等"""
+        from datetime import datetime
+        now = datetime.now()
+        return f"当前时间：{now.strftime('%Y年%m月%d日 %H:%M:%S')} 星期{['一','二','三','四','五','六','日'][now.weekday()]}"
+    
+    @tool
+    def advanced_calculator(expression: str) -> str:
+        """高级计算器，支持复杂数学表达式计算，包括基本运算、幂运算等"""
+        try:
+            # 支持更多数学函数
+            import math
+            # 创建安全的计算环境
+            safe_dict = {
+                "__builtins__": {},
+                "abs": abs, "round": round, "min": min, "max": max,
+                "sum": sum, "pow": pow, "sqrt": math.sqrt,
+                "sin": math.sin, "cos": math.cos, "tan": math.tan,
+                "pi": math.pi, "e": math.e
+            }
+            result = eval(expression, safe_dict)
+            return f"计算结果：{expression} = {result}"
+        except Exception as e:
+            return f"计算错误：{str(e)}"
+    
+    @tool
+    def weather_simulator(city: str = "北京") -> str:
+        """模拟天气查询工具，返回指定城市的模拟天气信息"""
+        import random
+        temperatures = list(range(-10, 35))
+        weather_conditions = ["晴天", "多云", "阴天", "小雨", "大雨", "雪天"]
+        
+        temp = random.choice(temperatures)
+        condition = random.choice(weather_conditions)
+        humidity = random.randint(30, 90)
+        
+        return f"{city}天气：{condition}，温度{temp}°C，湿度{humidity}%"
+    
+    @tool
+    def text_processor(text: str, operation: str = "upper") -> str:
+        """文本处理工具，支持多种文本操作：upper(大写)、lower(小写)、reverse(反转)、length(长度)"""
+        try:
+            if operation == "upper":
+                return f"大写转换：{text.upper()}"
+            elif operation == "lower":
+                return f"小写转换：{text.lower()}"
+            elif operation == "reverse":
+                return f"反转文本：{text[::-1]}"
+            elif operation == "length":
+                return f"文本长度：{len(text)} 个字符"
+            else:
+                return f"不支持的操作：{operation}。支持的操作：upper, lower, reverse, length"
+        except Exception as e:
+            return f"文本处理错误：{str(e)}"
+    
+    @tool
+    def random_generator(min_val: int = 1, max_val: int = 100, count: int = 1) -> str:
+        """随机数生成器，可以生成指定范围内的随机数"""
+        try:
+            if count == 1:
+                result = random.randint(min_val, max_val)
+                return f"随机数：{result} (范围：{min_val}-{max_val})"
+            else:
+                results = [random.randint(min_val, max_val) for _ in range(count)]
+                return f"随机数列表：{results} (范围：{min_val}-{max_val}，数量：{count})"
+        except Exception as e:
+            return f"随机数生成错误：{str(e)}"
+    
+    @tool
+    def unit_converter(value: float, from_unit: str, to_unit: str) -> str:
+        """单位转换工具，支持温度、长度等单位转换"""
+        try:
+            # 温度转换
+            if from_unit.lower() == "celsius" and to_unit.lower() == "fahrenheit":
+                result = (value * 9/5) + 32
+                return f"温度转换：{value}°C = {result:.2f}°F"
+            elif from_unit.lower() == "fahrenheit" and to_unit.lower() == "celsius":
+                result = (value - 32) * 5/9
+                return f"温度转换：{value}°F = {result:.2f}°C"
+            # 长度转换
+            elif from_unit.lower() == "meter" and to_unit.lower() == "feet":
+                result = value * 3.28084
+                return f"长度转换：{value}米 = {result:.2f}英尺"
+            elif from_unit.lower() == "feet" and to_unit.lower() == "meter":
+                result = value / 3.28084
+                return f"长度转换：{value}英尺 = {result:.2f}米"
+            else:
+                return f"不支持的转换：{from_unit} -> {to_unit}"
+        except Exception as e:
+            return f"单位转换错误：{str(e)}"
+    
+    # 创建工具列表
+    tools = [
+        get_current_time, 
+        advanced_calculator, 
+        weather_simulator, 
+        text_processor, 
+        random_generator, 
+        unit_converter
+    ]
+    
+    # 创建提示模板
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """你是一个智能助手，拥有多种工具来帮助用户解决问题。
+
+可用工具：
+1. get_current_time - 获取当前时间
+2. advanced_calculator - 高级数学计算
+3. weather_simulator - 天气查询（模拟）
+4. text_processor - 文本处理
+5. random_generator - 随机数生成
+6. unit_converter - 单位转换
+
+重要指导原则：
+- 当用户的问题包含多个任务时，你需要逐步完成每个任务
+- 每次只调用完成当前步骤所需的工具
+- 完成一个步骤后，继续处理下一个步骤
+- 确保所有用户要求的任务都得到完成
+
+例如，如果用户问"现在几点了？帮我计算一下2+3*4的结果，然后生成一个1-100的随机数"，你应该：
+1. 首先调用 get_current_time 获取时间
+2. 然后调用 advanced_calculator 计算数学表达式
+3. 最后调用 random_generator 生成随机数
+4. 将所有结果整合给出完整答案
+
+请按照用户问题的逻辑顺序，逐步使用相应的工具。"""),
+        ("human", "{question}")
+    ])
+    
+    # 将工具绑定到模型上
+    model_with_tools = chat_model.bind_tools(tools)
+    
+    # 使用工具调用模型
+    messages = prompt.format_messages(question=question)
+    response = await model_with_tools.ainvoke(messages)
+    
+    # 创建工具映射
+    tool_map = {tool.name: tool for tool in tools}
+    from langchain_core.messages import ToolMessage
+    
+    # 记录所有工具调用详情
+    all_tool_calls = []
+    max_iterations = 5  # 防止无限循环
+    iteration = 0
+    
+    # 多轮工具调用循环
+    while iteration < max_iterations:
+        iteration += 1
+        
+        # 检查当前响应是否有工具调用
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            # 将模型响应添加到消息历史
+            messages.append(response)
+            
+            # 执行当前轮次的所有工具调用
+            current_round_tools = []
+            for tool_call in response.tool_calls:
+                tool_name = tool_call["name"]
+                tool_args = tool_call["args"]
+                tool_id = tool_call["id"]
+                
+                # 查找并执行工具
+                if tool_name in tool_map:
+                    try:
+                        # 执行工具函数
+                        tool_result = tool_map[tool_name].invoke(tool_args)
+                        # 创建工具消息并添加到消息历史
+                        tool_message = ToolMessage(
+                            content=str(tool_result),
+                            tool_call_id=tool_id
+                        )
+                        messages.append(tool_message)
+                        
+                        # 记录工具调用详情
+                        tool_detail = {
+                            "name": tool_name,
+                            "args": tool_args,
+                            "id": tool_id,
+                            "result": str(tool_result),
+                            "status": "success",
+                            "round": iteration
+                        }
+                        current_round_tools.append(tool_detail)
+                        all_tool_calls.append(tool_detail)
+                        
+                    except Exception as e:
+                        # 如果工具执行失败，添加错误消息
+                        error_message = ToolMessage(
+                            content=f"工具执行错误: {str(e)}",
+                            tool_call_id=tool_id
+                        )
+                        messages.append(error_message)
+                        
+                        # 记录错误详情
+                        tool_detail = {
+                            "name": tool_name,
+                            "args": tool_args,
+                            "id": tool_id,
+                            "result": f"执行失败: {str(e)}",
+                            "status": "error",
+                            "round": iteration
+                        }
+                        current_round_tools.append(tool_detail)
+                        all_tool_calls.append(tool_detail)
+            
+            # 再次调用模型，让它基于工具结果决定下一步
+            response = await model_with_tools.ainvoke(messages)
+            
+            # 如果这轮没有工具调用，说明任务完成
+            if not (hasattr(response, "tool_calls") and response.tool_calls):
+                break
+                
+        else:
+            # 没有工具调用，退出循环
+            break
+    
+    # 返回详细的响应信息
+    if all_tool_calls:
+        return {
+            "response": response.content,
+            "tool_calls_count": len(all_tool_calls),
+            "tool_calls": all_tool_calls,
+            "execution_summary": f"在 {iteration} 轮中成功执行了 {len(all_tool_calls)} 个工具调用",
+            "available_tools": [tool.name for tool in tools],
+            "rounds": iteration
+        }
+    else:
+        # 如果没有工具调用，直接返回模型响应
+        return {
+            "response": response.content,
+            "tool_calls_count": 0,
+            "tool_calls": [],
+            "execution_summary": "未使用任何工具",
+            "available_tools": [tool.name for tool in tools]
+        }
