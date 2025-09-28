@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query, Path, Body, Depends, status
 from typing import List, Optional, Dict, Any
 from app.schemas.demo import DemoPostForm, DemoItem, DemoUpdate,DemoResponse
-
+from fastapi.responses import StreamingResponse
+import asyncio  # 需要导入asyncio模块
 router = APIRouter()
 
 # 基础示例 - 简单GET请求
@@ -211,3 +212,13 @@ async def read_item_with_error(item_id: int):
             detail="Item not found",
         )
     return {"item_id": item_id, "name": f"Item {item_id}"}
+
+@router.get("/streamDemo01")
+async def streamDemo():
+    async def test():
+        count = 0
+        while count < 100:
+            yield ('小黑放得开尖峰时刻大姐夫随机发手打会计法手打开发机苏卡达水电费可视对讲福克斯电极法刷卡电极法第三方开机速度快福建师大看法是第三方可视对讲焚枯食淡叫法是老大打开福建省快递费几十块倒垃圾发上啦电极法收到反馈近段时间发多少第三方快进到' + str(count)).encode('utf-8')
+            await asyncio.sleep(1)  # 休眠1秒
+            count = count + 1   
+    return StreamingResponse(test(), media_type="text/plain")
