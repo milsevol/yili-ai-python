@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from typing import List, Dict, Any, Optional, Union
 import json
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
@@ -60,58 +60,51 @@ async def llm_prompt_template(question: str, context: str = Query(None, descript
     提示模板示例：使用模板构建提示
     
     这个示例展示如何使用提示模板来构建更结构化的提示：
-    - 创建提示模板
-    - 使用模板格式化输入
+    - 使用llm_service中的invoke_llm方法
+    - 构建系统提示词和用户消息
     - 调用语言模型
     - 返回结果
     """
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
     
-    # 创建提示模板
+    # 构建系统提示词
     if context:
-        # 如果有上下文，使用包含上下文的模板
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "你是一个有帮助的AI助手。请基于以下上下文回答问题。\n上下文: {context}"),
-            ("human", "{question}")
-        ])
-        # 使用模板格式化输入
-        chain = prompt | chat_model
-        # 调用链并传入参数
-        response = await chain.ainvoke({"context": context, "question": question})
+        # 如果有上下文，使用包含上下文的系统提示词
+        system_prompt = f"你是一个有帮助的AI助手。请基于以下上下文回答问题。\n上下文: {context}"
     else:
-        # 如果没有上下文，使用简单模板
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "你是一个有帮助的AI助手。"),
-            ("human", "{question}")
-        ])
-        # 使用模板格式化输入
-        chain = prompt | chat_model
-        # 调用链并传入参数
-        response = await chain.ainvoke({"question": question})
+        # 如果没有上下文，使用简单的系统提示词
+        system_prompt = "你是一个有帮助的AI助手。"
+    
+    # 使用invoke_llm方法调用模型
+    response = await invoke_llm(
+        messages=question,
+        system_prompt=system_prompt
+    )
     
     # 返回响应内容
-    return response.content
+    return response
 
 
 @router.get("/llm/chain")
 async def llm_chain(question: str):
     """
-    链式操作示例：使用输出解析器处理模型输出
+    链式操作示例：通过 llm_service 获取模型对象进行链式操作
     
-    这个示例展示如何使用链式操作和输出解析器：
+    这个示例展示如何通过 llm_service 获取底层模型对象：
+    - 通过 llm_service 获取配置好的聊天模型
     - 创建字符串输出解析器
     - 构建链式操作
     - 调用链并返回结果
+    
+    优势：使用统一的配置管理，同时保持 LangChain 链式操作的灵活性
     """
+    # 获取 llm_service 实例
+    llm_service = get_llm_service()
+    
+    # 获取配置好的聊天模型对象
+    chat_model = llm_service.clients.chat_model
+    
     # 创建字符串输出解析器
     parser = StrOutputParser()
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
     
     # 构建链式操作：模型输出通过解析器处理
     chain = chat_model | parser
@@ -120,7 +113,15 @@ async def llm_chain(question: str):
     response = await chain.ainvoke(question)
     
     # 返回处理后的响应
-    return response
+    return {
+        "response": response,
+        "method": "llm_service_chain",
+        "model_config": {
+            "temperature": llm_service.config.temperature,
+            "max_tokens": llm_service.config.max_tokens,
+            "timeout": llm_service.config.timeout
+        }
+    }
 
 
 # ==================== 高级示例 ====================
@@ -138,19 +139,23 @@ class MovieReview(BaseModel):
 @router.get("/llm/structured_output")
 async def llm_structured_output(movie: str):
     """
-    结构化输出示例：将模型输出解析为结构化数据
+    结构化输出示例：通过 llm_service 实现结构化数据输出
     
-    这个示例展示如何使用Pydantic模型和JSON输出解析器：
+    这个示例展示如何通过 llm_service 获取模型对象并使用链式操作：
+    - 通过 llm_service 获取配置好的聊天模型
     - 定义输出模型结构
     - 创建JSON输出解析器
     - 构建提示模板
     - 创建链式操作
     - 返回结构化数据
+    
+    优势：使用统一的配置管理，同时保持结构化输出的功能
     """
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
+    # 获取 llm_service 实例
+    llm_service = get_llm_service()
+    
+    # 获取配置好的聊天模型对象
+    chat_model = llm_service.clients.chat_model
     
     # 创建JSON输出解析器，指定输出模型
     parser = JsonOutputParser(pydantic_object=MovieReview)
@@ -168,7 +173,15 @@ async def llm_structured_output(movie: str):
     # 调用链并获取结构化响应
     try:
         response = await chain.ainvoke({"movie": movie})
-        return response
+        return {
+            "data": response,
+            "method": "llm_service_structured_output",
+            "model_config": {
+                "temperature": llm_service.config.temperature,
+                "max_tokens": llm_service.config.max_tokens,
+                "timeout": llm_service.config.timeout
+            }
+        }
     except Exception as e:
         # 如果解析失败，返回错误信息
         return {"error": f"无法解析响应: {str(e)}"}
@@ -180,25 +193,23 @@ async def llm_chat_history(
     history: Optional[str] = Query(None, description="聊天历史，格式为JSON字符串，包含角色和内容")
 ):
     """
-    聊天历史示例：使用聊天历史进行对话
+    聊天历史示例：通过 llm_service 使用聊天历史进行对话
     
-    这个示例展示如何使用聊天历史进行连续对话：
+    这个示例展示如何通过 llm_service 使用聊天历史进行连续对话：
     - 解析聊天历史
     - 构建消息列表
-    - 调用语言模型
+    - 直接调用 llm_service 的 invoke_chat 方法
     - 返回响应和更新后的历史
+    
+    优势：使用 llm_service 的统一接口，简化代码逻辑
     """
     import json
     
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
+    # 获取 llm_service 实例
+    llm_service = get_llm_service()
     
-    # 初始化消息列表，使用List类型注解确保可以接受不同类型的消息
-    messages: List[Union[SystemMessage, HumanMessage, AIMessage]] = [
-        SystemMessage(content="你是一个有帮助的AI助手，能够记住对话历史并提供连贯的回答。")
-    ]
+    # 初始化消息列表
+    messages: List[BaseMessage] = []
     
     # 如果有聊天历史，解析并添加到消息列表
     if history:
@@ -215,25 +226,29 @@ async def llm_chat_history(
     # 添加当前问题
     messages.append(HumanMessage(content=question))
     
-    # 调用模型获取响应
-    response = await chat_model.ainvoke(messages)
-    
-    # 更新历史，添加当前问题和回答
-    new_history = []
-    if history:
-        try:
-            new_history = json.loads(history)
-        except json.JSONDecodeError:
-            new_history = []
-    
-    new_history.append({"role": "human", "content": question})
-    new_history.append({"role": "ai", "content": response.content})
-    
-    # 返回响应和更新后的历史
-    return {
-        "response": response.content,
-        "history": new_history
-    }
+    # 使用 llm_service 的 invoke_chat 方法，传入系统提示和消息列表
+    try:
+        response = await llm_service.invoke_chat(
+            messages=messages,
+            system_prompt="你是一个有帮助的AI助手，能够记住对话历史并提供连贯的回答。"
+        )
+        
+        # 更新历史，添加当前问题和回答
+        new_history = []
+        if history:
+            try:
+                new_history = json.loads(history)
+            except json.JSONDecodeError:
+                new_history = []
+        
+        new_history.append({"role": "human", "content": question})
+        new_history.append({"role": "ai", "content": response})
+        
+        # 返回AI的最新回复
+        return response
+        
+    except Exception as e:
+        return {"error": f"调用模型失败: {str(e)}"}
 
 
 @router.get("/llm/rag_simple")
@@ -295,108 +310,34 @@ async def llm_tool_use(question: str):
     工具使用示例：让模型使用工具
     
     这个示例展示如何让语言模型使用工具：
-    - 定义工具函数
-    - 创建提示模板
-    - 调用模型并处理工具使用
+    - 使用安全的工具模块
+    - 通过 llm_service 调用工具
+    - 处理工具执行结果
     """
-    from langchain_core.tools import tool
+    from app.tools import AVAILABLE_TOOLS
     
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
+    # 获取LLM服务实例
+    llm_service = get_llm_service()
     
-    # 定义工具函数
-    @tool
-    def calculator(expression: str) -> str:
-        """计算数学表达式的结果"""
-        try:
-            # 安全地评估表达式
-            # 注意：在实际应用中应使用更安全的方法
-            return str(eval(expression))
-        except Exception as e:
-            return f"计算错误: {str(e)}"
-    
-    @tool
-    def current_date() -> str:
-        """获取当前日期和时间"""
-        from datetime import datetime
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 创建工具列表
-    tools = [calculator, current_date]
-    
-    # 创建提示模板
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "你是一个有帮助的AI助手，可以使用提供的工具来回答问题。"),
-        ("human", "{question}")
-    ])
-    
-    # 将工具绑定到模型上
-    model_with_tools = chat_model.bind_tools(tools)
-    
-    # 使用工具调用模型
-    messages = prompt.format_messages(question=question)
-    response = await model_with_tools.ainvoke(messages)
-    
-    # 检查是否有工具调用需要执行
-    if hasattr(response, "tool_calls") and response.tool_calls:
-        # 创建工具映射，方便根据名称查找工具
-        tool_map = {tool.name: tool for tool in tools}
+    try:
+        # 使用 llm_service 的工具调用功能
+        result = await llm_service.invoke_with_tools(
+            messages=question,
+            tools=AVAILABLE_TOOLS,
+            system_prompt="你是一个有帮助的AI助手，可以使用提供的工具来回答问题。当需要进行数学计算时，请使用计算器工具。当需要获取当前时间信息时，请使用相应的时间工具。"
+        )
         
-        # 执行所有工具调用
-        from langchain_core.messages import ToolMessage
-        
-        # 将原始消息和模型响应添加到消息历史中
-        messages.append(response)
-        
-        # 执行每个工具调用并收集结果
-        for tool_call in response.tool_calls:
-            tool_name = tool_call["name"]
-            tool_args = tool_call["args"]
-            tool_id = tool_call["id"]
-            
-            # 查找并执行工具
-            if tool_name in tool_map:
-                try:
-                    # 执行工具函数
-                    tool_result = tool_map[tool_name].invoke(tool_args)
-                    # 创建工具消息并添加到消息历史
-                    tool_message = ToolMessage(
-                        content=str(tool_result),
-                        tool_call_id=tool_id
-                    )
-                    messages.append(tool_message)
-                except Exception as e:
-                    # 如果工具执行失败，添加错误消息
-                    error_message = ToolMessage(
-                        content=f"工具执行错误: {str(e)}",
-                        tool_call_id=tool_id
-                    )
-                    messages.append(error_message)
-        
-        # 再次调用模型，让它基于工具结果生成最终答案
-        final_response = await model_with_tools.ainvoke(messages)
-        
-        # 返回最终响应
         return {
-            "response": final_response.content,
-            "tool_calls": [
-                {
-                    "name": tool_call["name"],
-                    "args": tool_call["args"],
-                    "id": tool_call.get("id", ""),
-                    "result": str(tool_map[tool_call["name"]].invoke(tool_call["args"])) if tool_call["name"] in tool_map else "执行失败"
-                }
-                for tool_call in response.tool_calls
-            ]
+            "response": result["response"],
+            "tool_calls": result["tool_calls"],
+            "has_tool_calls": result["has_tool_calls"],
+            "message_list": result["message_list"],
+            "method": "llm_service.invoke_with_tools",
+            "available_tools": [tool.name for tool in AVAILABLE_TOOLS]
         }
-    else:
-        # 如果没有工具调用，直接返回模型响应
-        return {
-            "response": response.content,
-            "tool_calls": []
-        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"工具调用失败: {str(e)}")
 
 
 @router.get("/llm/multi_tool_demo")

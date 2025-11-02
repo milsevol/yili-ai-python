@@ -23,6 +23,8 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_community.embeddings import DashScopeEmbeddings
 from langchain.schema import AIMessage, HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool
 
 
 @dataclass
@@ -258,6 +260,136 @@ class LLMService:
             print(f"LLM流式调用失败: {str(e)}")
             raise
             print(f"LLM聊天调用失败: {str(e)}")
+            raise
+    
+    async def invoke_with_tools(
+        self,
+        messages: Union[str, List[BaseMessage]],
+        tools: List[BaseTool],
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        使用工具调用LLM
+        
+        Args:
+            messages: 消息内容，可以是字符串或消息列表
+            tools: 可用工具列表
+            system_prompt: 系统提示词
+            temperature: 温度参数
+            max_tokens: 最大token数
+            
+        Returns:
+            Dict[str, Any]: 包含响应和工具调用信息的字典
+            
+        Raises:
+            Exception: 调用失败时抛出异常
+        """
+        try:
+            # 构建消息列表
+            if isinstance(messages, str):
+                message_list = []
+                if system_prompt:
+                    message_list.append(SystemMessage(content=system_prompt))
+                message_list.append(HumanMessage(content=messages))
+            else:
+                message_list = messages.copy()
+                if system_prompt:
+                    message_list.insert(0, SystemMessage(content=system_prompt))
+            
+            # 创建工具映射
+            tool_map = {tool.name: tool for tool in tools}
+            
+            # 绑定工具到模型
+            if temperature is not None or max_tokens is not None:
+                # 创建临时客户端以覆盖参数
+                temp_kwargs = {
+                    "model": "deepseek-chat",
+                    "api_key": self.config.deepseek_api_key,
+                    "temperature": temperature if temperature is not None else self.config.temperature,
+                    "timeout": self.config.timeout,
+                    "base_url": "https://api.deepseek.com/v1"
+                }
+                
+                final_max_tokens = max_tokens if max_tokens is not None else self.config.max_tokens
+                if final_max_tokens is not None:
+                    temp_kwargs["max_tokens"] = final_max_tokens
+                    
+                chat_model = ChatOpenAI(**temp_kwargs)
+            else:
+                chat_model = self.clients.chat_model
+            
+            model_with_tools = chat_model.bind_tools(tools)
+            
+            # 初始调用
+            response = await model_with_tools.ainvoke(message_list)
+            
+            # 检查是否有工具调用
+            if hasattr(response, "tool_calls") and getattr(response, "tool_calls", None):
+                # 将模型响应添加到消息历史
+                message_list.append(response)
+                
+                # 执行工具调用
+                tool_results = []
+                for tool_call in getattr(response, "tool_calls", []):
+                    tool_name = tool_call["name"]
+                    tool_args = tool_call["args"]
+                    tool_id = tool_call["id"]
+                    
+                    if tool_name in tool_map:
+                        try:
+                            # 执行工具
+                            tool_result = tool_map[tool_name].invoke(tool_args)
+                            tool_results.append({
+                                "name": tool_name,
+                                "args": tool_args,
+                                "id": tool_id,
+                                "result": str(tool_result)
+                            })
+                            
+                            # 添加工具消息到历史
+                            tool_message = ToolMessage(
+                                content=str(tool_result),
+                                tool_call_id=tool_id
+                            )
+                            message_list.append(tool_message)
+                            
+                        except Exception as e:
+                            error_result = f"工具执行错误: {str(e)}"
+                            tool_results.append({
+                                "name": tool_name,
+                                "args": tool_args,
+                                "id": tool_id,
+                                "result": error_result
+                            })
+                            
+                            # 添加错误消息到历史
+                            error_message = ToolMessage(
+                                content=error_result,
+                                tool_call_id=tool_id
+                            )
+                            message_list.append(error_message)
+                
+                # 再次调用模型生成最终响应
+                final_response = await model_with_tools.ainvoke(message_list)
+                
+                return {
+                    "response": final_response.content,
+                    "tool_calls": tool_results,
+                    "message_list": message_list,
+                    "has_tool_calls": True
+                }
+            else:
+                # 没有工具调用，直接返回响应
+                return {
+                    "response": response.content,
+                    "tool_calls": [],
+                    "has_tool_calls": False
+                }
+                
+        except Exception as e:
+            print(f"LLM工具调用失败: {str(e)}")
             raise
     
     async def generate_embedding(self, text: str) -> List[float]:
