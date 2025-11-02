@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.endpoints import health, users, items, products, orders, customers, conversation_search, llmtest, demo
+from app.api.endpoints import health, users, items, products, orders, customers, conversation_search, llmtest, demo, agents
 
 router = APIRouter()
 
@@ -14,4 +14,5 @@ router.include_router(conversation_search.router, prefix="/conversations", tags=
 router.include_router(conversation_search.router, prefix="/conversations", tags=["conversations"])
 router.include_router(llmtest.router, prefix="/llmtest", tags=["大模型测试"])
 router.include_router(llmtest.router, prefix="/agenttest", tags=["agent学习"])
+router.include_router(agents.router, prefix="/agents", tags=["AI Agent"])
 router.include_router(demo.router, prefix="/demo", tags=["接口示例测试"])
