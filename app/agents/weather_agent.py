@@ -15,7 +15,7 @@ class WeatherAgent(ReactAgent):
     def __init__(self, name: str = "WeatherAgent", description: str = "天气查询专家助手"):
         super().__init__(name, description)
         
-        # 自动添加天气相关工具
+        # 添加天气相关工具到Agent的工具列表
         self.add_tools(get_weather_tools())
         
         # 设置专门的天气查询提示词
@@ -58,46 +58,6 @@ Thought:{agent_scratchpad}""")
         
         self.set_custom_prompt(weather_prompt)
     
-    async def get_weather(self, city: str) -> Dict[str, Any]:
-        """
-        快捷方法：获取指定城市的天气信息
-        
-        Args:
-            city: 城市名称
-            
-        Returns:
-            天气查询结果
-        """
-        query = f"请告诉我{city}的当前天气情况"
-        return await self.run(query)
-    
-    async def get_weather_with_forecast(self, city: str, days: int = 3) -> Dict[str, Any]:
-        """
-        快捷方法：获取天气信息和预报
-        
-        Args:
-            city: 城市名称
-            days: 预报天数
-            
-        Returns:
-            天气查询和预报结果
-        """
-        query = f"请告诉我{city}的当前天气和未来{days}天的天气预报"
-        return await self.run(query)
-    
-    async def get_weather_advice(self, city: str) -> Dict[str, Any]:
-        """
-        快捷方法：获取天气信息和生活建议
-        
-        Args:
-            city: 城市名称
-            
-        Returns:
-            天气信息和建议
-        """
-        query = f"请告诉我{city}的天气情况，并给出今天的穿衣和出行建议"
-        return await self.run(query)
-    
     def get_supported_cities(self) -> List[str]:
         """获取支持查询的城市列表"""
         return ["北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "西安", "南京", "天津"]
@@ -111,7 +71,7 @@ Thought:{agent_scratchpad}""")
             "supported_cities": self.get_supported_cities(),
             "capabilities": [
                 "实时天气查询",
-                "天气预报查询",
+                "天气预报查询", 
                 "生活建议提供",
                 "多城市支持"
             ],
