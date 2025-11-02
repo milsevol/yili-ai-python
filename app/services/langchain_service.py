@@ -46,7 +46,7 @@ def get_langchain_client():
     chat_model = ChatOpenAI(
         model="deepseek-chat",
         api_key=SecretStr(deepseek_key),
-        temperature=0.1,
+        temperature=0.0,  # 降低温度，提高工具调用的确定性
         base_url="https://api.deepseek.com/v1"
     )
     
