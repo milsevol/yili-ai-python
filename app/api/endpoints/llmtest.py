@@ -7,6 +7,7 @@ from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
 from app.services.langchain_service import get_langchain_client, convert_nl_to_es_query
+from app.services.llm_service import get_llm_service, invoke_llm, stream_llm
 
 
 router = APIRouter()
@@ -19,19 +20,12 @@ async def llm_basic(question: str):
     基础示例：直接调用语言模型
     
     这是最简单的LangChain使用方式，直接将问题发送给语言模型并返回结果
-    - 获取LangChain客户端
-    - 获取聊天模型
-    - 异步调用模型
-    - 返回内容
     """
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
+    
     # 异步调用模型并获取响应
-    response = await chat_model.ainvoke(question)
+    response = await invoke_llm(question)
     # 返回响应内容
-    return response.content
+    return response
 
 
 @router.get("/llm/streaming")
@@ -40,26 +34,21 @@ async def llm_streaming(question: str):
     流式响应示例：实时返回语言模型的输出
     
     这个示例展示如何使用流式API获取实时响应：
-    - 获取LangChain客户端
-    - 获取聊天模型
+    - 使用llm_service中的stream_llm方法
     - 创建异步生成器函数
     - 使用StreamingResponse返回流式内容
     """
-    # 获取LangChain客户端
-    client = get_langchain_client()
-    # 获取聊天模型
-    chat_model = client["chat_model"]
     
     # 创建异步生成器函数，用于流式返回结果
     async def generate_tokens():
-        # 使用stream方法获取流式响应
-        for response in chat_model.stream(question):
-            if hasattr(response, 'content'):
-                # 如果响应有content属性，返回内容
-                yield response.content
-            else:
-                # 否则将响应转换为字符串
-                yield str(response)
+        # 使用stream_llm方法获取流式响应
+        try:
+            for response in stream_llm(question):
+                # 确保响应是字符串格式
+                if response:
+                    yield str(response)
+        except Exception as e:
+            yield f"Error: {str(e)}"
     
     # 使用StreamingResponse返回流式内容
     return StreamingResponse(generate_tokens(), media_type="text/plain")
