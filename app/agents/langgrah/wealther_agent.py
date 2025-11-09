@@ -41,4 +41,33 @@ def invoke_weather_agent(user_input: str):
             ]
         }
     )
-__all__ = ["weather_agent", "invoke_weather_agent"]
+
+# 流式调用：逐步返回消息更新（仅输出 AI 消息）
+def stream_weather_agent(user_input: str):
+    emitted = 0
+    for state in weather_agent.stream(
+        {
+            "messages": [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=user_input),
+            ]
+        },
+        stream_mode="values",
+    ):
+        msgs = state.get("messages", [])
+        # 仅输出新增的 AI 消息内容
+        while emitted < len(msgs):
+            msg = msgs[emitted]
+            emitted += 1
+            # 只返回 AIMessage 的文本内容
+            try:
+                from langchain_core.messages import AIMessage
+                if isinstance(msg, AIMessage):
+                    yield getattr(msg, "content", "")
+            except Exception:
+                # 类型判断失败时，尝试直接读 content
+                content = getattr(msg, "content", None)
+                if isinstance(content, str):
+                    yield content
+
+__all__ = ["weather_agent", "invoke_weather_agent", "stream_weather_agent"]
